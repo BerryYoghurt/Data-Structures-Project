@@ -1,5 +1,6 @@
 package eg.edu.alexu.csd.filestructure.redblacktree;
 
+import javax.management.RuntimeErrorException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -26,6 +27,11 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
         root = new Node<>(null); //null node
     }
 
+    private void handle_null_input(Object o){
+        if(o == null)
+            throw new RuntimeErrorException(new Error("Key cannot be null"));
+    }
+
     /**returns the null node which should contain the key if the key is not found*/
     private INode<T,V> find_node(INode<T,V> sub_root, T key){
         if(sub_root.isNull()){
@@ -45,11 +51,13 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
 
     @Override
     public V search(T key) {
+        handle_null_input(key);
         return find_node(root,key).getValue();
     }
 
     @Override
     public boolean contains(T key) {
+        handle_null_input(key);
         //return true if the node that should contain this key is not the null node
         return !find_node(root, key).isNull();
     }
@@ -100,9 +108,36 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
         /*six pointers modified in total*/
     }
 
-    /**@param problematic_node must be red*/
+    private void general_resolve_double_red(INode<T,V> problematic_node,
+                                            UnaryOperator<INode<T,V>> getRightChild,
+                                            UnaryOperator<INode<T,V>> getLeftChild,
+                                            Consumer<INode<T,V>> right_rotate,
+                                            Consumer<INode<T,V>> left_rotate){
+        INode<T,V> parent = problematic_node.getParent(), grandparent = parent.getParent(), uncle = getRightChild.apply(grandparent);
+        if(uncle.getColor() == INode.BLACK){
+            if(getRightChild.apply(parent) == problematic_node){
+                //left right
+                left_rotate.accept(parent);
+                /*maintain the relationships (problematic node is the lower node*/
+                problematic_node = parent;
+                parent = problematic_node.getParent();
+            }
+            right_rotate.accept(grandparent);
+            parent.setColor(INode.BLACK);
+            grandparent.setColor(INode.RED);
+        }else{
+            uncle.setColor(INode.BLACK);
+            parent.setColor(INode.BLACK);
+            grandparent.setColor(INode.RED);
+            resolve_double_red(grandparent);
+        }
+
+    }
+
+    /**@param problematic_node must be red, may or may not be double red*/
     private void resolve_double_red(INode<T,V> problematic_node){
         INode<T,V> parent = problematic_node.getParent();
+
         if(parent == null){//no parent, problematic_node is the root
             problematic_node.setColor(INode.BLACK);
         }else if(parent.getColor() == INode.RED){
@@ -112,42 +147,25 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
             //grandparent is, by definition, never null because parent is red
 
             if(grandparent.getLeftChild() == parent){
-                uncle = grandparent.getRightChild();
-                if(uncle.getColor() == INode.BLACK){
-                    if(parent.getRightChild() == problematic_node){
-                        //left right
-                        left_rotate(parent);
-                    }
-                    right_rotate(grandparent);
-                }
+                general_resolve_double_red(problematic_node,
+                        INode::getRightChild,
+                        INode::getLeftChild,
+                        this::right_rotate,
+                        this::left_rotate);
             }else{ //parent is right child of grandparent
-                uncle = grandparent.getLeftChild();
-                if(uncle.getColor() == INode.BLACK){
-                    if(parent.getLeftChild() == problematic_node){
-                        //right left
-                        right_rotate(parent);
-                    }
-                    left_rotate(grandparent);
-                }
-            }
-            /*it is more logical to put this code within the previous if-else blocks
-            * but I found myself copying and pasting the code, so I put it here
-            * the color of uncle doesn't change in the other case anyway*/
-            if(uncle.getColor() == INode.RED){
-                uncle.setColor(INode.BLACK);
-                parent.setColor(INode.BLACK);
-                grandparent.setColor(INode.RED);
-                resolve_double_red(grandparent);
-            }else{
-                //we know here that we have rotated the nodes
-                parent.setColor(INode.BLACK);
-                grandparent.setColor(INode.RED);
+                general_resolve_double_red(problematic_node,
+                        INode::getLeftChild,
+                        INode::getRightChild,
+                        this::left_rotate,
+                        this::right_rotate);
             }
         }
     }
 
     @Override
     public void insert(T key, V value) {
+        handle_null_input(key);
+        handle_null_input(value);
         INode<T,V> dest_node = find_node(root, key);
         if(!dest_node.isNull()){//key already there
             dest_node.setValue(value);
@@ -159,7 +177,7 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
             dest_node.setLeftChild(new Node<>(dest_node));
             dest_node.setRightChild(new Node<>(dest_node));
             //no need to set parent
-            resolve_double_red(dest_node);
+            resolve_double_red(dest_node);//correct call because dest_node is red
         }
     }
 
@@ -169,35 +187,38 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
                                       Consumer<INode<T,V>> right_rotate,
                                       Consumer<INode<T,V>> left_rotate){
         INode<T,V> parent = problematic_node.getParent(), sibling;
-        sibling = parent.getRightChild();
+        sibling = getRightChild.apply(parent);
         if(sibling.getColor() == INode.RED){
-            left_rotate(parent);
+            left_rotate.accept(parent);
             parent.setColor(INode.RED);
             sibling.setColor(INode.BLACK);
             resolve_double_black(problematic_node); //will be a base case
         }else{
-            //sibling is black
-            if(sibling.getRightChild().getColor() == INode.BLACK && sibling.getLeftChild().getColor() == INode.BLACK){
+            //sibling is black TODO sibling could also be NullNode???
+            if(sibling.isNull()){
+                System.out.println("Should not happen");
+            }
+            if(getRightChild.apply(sibling).getColor() == INode.BLACK && getLeftChild.apply(sibling).getColor() == INode.BLACK){
                 //with 2 black children
                 sibling.setColor(INode.RED);
                 if(parent.getColor() == INode.BLACK){
-                    resolve_double_black(parent);
+                    resolve_double_black(parent); //correct call
                 }else{
                     parent.setColor(INode.BLACK);
                 }
             }else{
                 //with at least one red child
-                if(sibling.getRightChild().getColor() == INode.BLACK){
+                if(getRightChild.apply(sibling).getColor() == INode.BLACK){
                     //with exacly one red child (left child)
-                    right_rotate(sibling);
+                    right_rotate.accept(sibling);
                     sibling.setColor(INode.RED);
-                    sibling = parent.getRightChild();//new sibling now
+                    sibling = getRightChild.apply(parent);//new sibling now
                     sibling.setColor(INode.BLACK); // was originally red, which is why we are here is the first place
                 }
                 //now we are sure that the right child of sibling is red,
                 // and sibling is black
-                left_rotate(parent);
-                sibling.getRightChild().setColor(INode.BLACK);
+                left_rotate.accept(parent);
+                getRightChild.apply(sibling).setColor(INode.BLACK);
                 if(parent.getColor() == INode.RED){
                     sibling.setColor(INode.RED);
                     parent.setColor(INode.BLACK);
@@ -208,63 +229,32 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
 
     /**@param problematic_node must be a black node*/
     private void resolve_double_black(INode<T,V> problematic_node){
-        INode<T,V> parent = problematic_node.getParent(), sibling;
+        INode<T,V> parent = problematic_node.getParent();
         //if the problematic_node is the root, nothing has to be done
         if(parent == null){
+            root = problematic_node;//TODO sure?
             return;
         }
         if(parent.getLeftChild() == problematic_node){
-            sibling = parent.getRightChild();
-            if(sibling.getColor() == INode.RED){
-                left_rotate(parent);
-                parent.setColor(INode.RED);
-                sibling.setColor(INode.BLACK);
-                resolve_double_black(problematic_node); //will be a base case
-            }else{
-                //sibling is black
-                if(sibling.getRightChild().getColor() == INode.BLACK && sibling.getLeftChild().getColor() == INode.BLACK){
-                    //with 2 black children
-                    sibling.setColor(INode.RED);
-                    if(parent.getColor() == INode.BLACK){
-                        resolve_double_black(parent);
-                    }else{
-                        parent.setColor(INode.BLACK);
-                    }
-                }else{
-                    //with at least one red child
-                    if(sibling.getRightChild().getColor() == INode.BLACK){
-                        //with exacly one red child (left child)
-                        right_rotate(sibling);
-                        sibling.setColor(INode.RED);
-                        sibling = parent.getRightChild();//new sibling now
-                        sibling.setColor(INode.BLACK); // was originally red, which is why we are here is the first place
-                    }
-                    //now we are sure that the right child of sibling is red,
-                    // and sibling is black
-                    left_rotate(parent);
-                    sibling.getRightChild().setColor(INode.BLACK);
-                    if(parent.getColor() == INode.RED){
-                        sibling.setColor(INode.RED);
-                        parent.setColor(INode.BLACK);
-                    }
-                }
-            }
+            //I have written this code and decided it would be too tedious to re-write it for the other case, so I will use functional interfaces
+            general_resolve_double_black(problematic_node,
+                    INode::getRightChild,
+                    INode::getLeftChild,
+                    this::right_rotate,
+                    this::left_rotate);
         }else{
-            sibling = parent.getLeftChild();
-            if(sibling.getColor() == INode.RED){
-                right_rotate(parent);
-                parent.setColor(INode.RED);
-                sibling.setColor(INode.BLACK);
-                resolve_double_black(problematic_node); //will be a base case
-            }else{
-
-            }
+            general_resolve_double_black(problematic_node,
+                    INode::getLeftChild,
+                    INode::getRightChild,
+                    this::left_rotate,
+                    this::right_rotate);
         }
 
     }
 
     @Override
     public boolean delete(T key) {
+        handle_null_input(key);
         INode<T,V> target_node = find_node(root,key);
         if(target_node.isNull()){
             return false; //didn't find the value
@@ -304,13 +294,6 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
             target_node.setRightChild(null);
         }else{
             /*target node could be root in case the root has no predecessor*/
-            /*if(parent == null){
-                root = target_node.getRightChild();
-                root.setColor(INode.BLACK);
-                root.setParent(null);
-                //nullify unused reference
-                target_node.setRightChild(null);
-            }*/
             INode<T,V> replacement;
             if(target_node.getRightChild().isNull()){
                 //replace it with its left child
@@ -336,13 +319,11 @@ public class RedBlackTree<T extends Comparable<T>,V> implements IRedBlackTree<T 
             }
 
             if(replacement.getColor() == INode.BLACK){
-                resolve_double_black(replacement);
+                resolve_double_black(replacement); //correct call
             }else{
                 replacement.setColor(INode.BLACK);
             }
-
         }
-
-        return false;
+        return true;
     }
 }
