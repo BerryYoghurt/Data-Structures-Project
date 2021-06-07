@@ -5,6 +5,7 @@ import java.util.AbstractMap;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -12,14 +13,17 @@ import java.util.Map.Entry;
 import java.util.Set;
 
 import javax.management.RuntimeErrorException;
+
 public class TreeMap<T extends Comparable<T>,V extends Comparable<V>> implements ITreeMap<T,V>{
-	 private IRedBlackTree<T,V> tree;
-	
+	private IRedBlackTree<T,V> tree;
+	private int size;
 	public TreeMap(IRedBlackTree<T,V> tree) {
 		this.tree=tree;
+		this.size = 0;
 	}
 	public TreeMap(){
 		this.tree = new RedBlackTree<>();
+		this.size = 0;
 	}
 	/**
 	 * Returns a key-value mapping associated with the least key greater than or equal to the given key, or null if there is no such key.
@@ -87,6 +91,7 @@ public class TreeMap<T extends Comparable<T>,V extends Comparable<V>> implements
 	@Override
 	public void clear() {
 		// TODO Auto-generated method stub
+		size = 0;
 		this.tree=new RedBlackTree<T,V>();
 	}
 
@@ -262,49 +267,85 @@ public class TreeMap<T extends Comparable<T>,V extends Comparable<V>> implements
 	}
 
 	@Override
-	public T lastKey() {
-		Entry<T, V>e=lastEntry();
-		return e==null?null:e.getKey();
-	}
-	@Override
-	public Entry<T, V> pollFirstEntry() {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public Entry<T, V> pollLastEntry() {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public void put(T key, V value) {
-		this.tree.insert(key, value);
+	public T lastKey() { //O(lg(n))
+		Entry<T, V> e = lastEntry();
+		if (e == null)
+			return null;
 		
-	}
-	@Override
-	public void putAll(Map<T, V> map) {
-		Iterator<Map.Entry<T, V>>iterator=map.entrySet().iterator();
-		while(iterator.hasNext())
-			this.tree.insert(iterator.next().getKey(),iterator.next().getValue());
-	}
-	@Override
-	public boolean remove(T key) {
-		// TODO Auto-generated method stub
-		return false;
+		return e.getKey();
 	}
 
 	@Override
-	public int size() {
-		// TODO Auto-generated method stub
-		return 0;
+	public Entry<T, V> pollFirstEntry() { // lg(n) + lg(n) = O(lg(n))
+		if (size == 0)
+			return null;
+		
+		Entry<T, V> e = firstEntry();
+		this.remove(e.getKey());
+		return e;
 	}
 
 	@Override
-	public Collection<V> values() {
-		// TODO Auto-generated method stub
-		return null;
+	public Entry<T, V> pollLastEntry() { // lg(n) + lg(n) = O(lg(n))
+		if (size == 0)
+			return null;
+		
+		Entry<T, V> e = lastEntry();
+		this.remove(e.getKey());
+		return e;
 	}
 
+	@Override
+	public void put(T key, V value) {//O(lg(n)) + O(lg(n)) = O(lg(n))
+		boolean contain = tree.contains(key);
+		tree.insert(key, value);
+		
+		if (!contain)
+			size++;
+	}
+
+	@Override
+	public void putAll(Map<T, V> map) {//O(k * lg(n)) k is number of elements in map
+		if (map == null)
+			throw new RuntimeErrorException(new Error());
+
+		Set<Entry<T, V>> s = map.entrySet();
+		Iterator<Entry<T, V>> i = s.iterator();
+		
+		while (i.hasNext()) {
+			Entry<T, V> e = i.next();
+			put(e.getKey(), e.getValue());
+		}
+	}
+
+	@Override
+	public boolean remove(T key) {//O(lg(n))
+		boolean done = tree.delete(key);
+		
+		if (done) 
+			size--;
+		
+		return done;
+	}
+
+	@Override
+	public int size() { //O(1)
+		return size;
+	}
+
+	@Override
+	public Collection<V> values() {//O(n) + O(n) = O(n)
+		Set<Entry<T, V>> s = entrySet();
+		Iterator<Entry<T, V>> i = s.iterator();
+		Collection<V> c = new ArrayList<V>();
+		
+		while (i.hasNext()) {
+			Entry<T, V> e = i.next();
+			c.add(e.getValue());
+		}
+		return c;
+	}
+
+	
+	
 }
